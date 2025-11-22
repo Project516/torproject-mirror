@@ -24,10 +24,11 @@ jobs:
           echo "Fetching latest Tor Browser version..."
           
           # Get the latest stable version from the distribution server
-          # Parse the directory listing for stable versions (exclude alpha/beta versions with 'a' or 'b')
+          # Parse the directory listing for stable versions (exclude alpha/beta versions)
           VERSION=$(curl -sL https://dist.torproject.org/torbrowser/ | \
-            grep -oP 'href="[0-9]+\.[0-9]+\.[0-9]+/"' | \
-            grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | \
+            grep -oP 'href="[0-9]+\.[0-9]+(\.[0-9]+)+/"' | \
+            grep -oP '[0-9]+\.[0-9]+(\.[0-9]+)+' | \
+            grep -v '[a-zA-Z]' | \
             sort -V | tail -1)
           
           if [ -z "$VERSION" ]; then
@@ -43,10 +44,6 @@ jobs:
           
           # Base URL for downloads
           BASE_URL="https://dist.torproject.org/torbrowser/${VERSION}"
-          
-          # Fetch the directory listing to see what files are available
-          echo "Fetching available files for version ${VERSION}..."
-          curl -sL "${BASE_URL}/" > /tmp/listing.html
           
           # Define the file patterns we want to download (portable versions for Windows, unified macOS, Linux tar.xz, Android APK)
           declare -a patterns=(
