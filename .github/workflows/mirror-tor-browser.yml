@@ -1,0 +1,377 @@
+name: Mirror Tor Browser Releases
+
+on:
+  schedule:
+    # Run at midnight UTC every day
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: write
+
+jobs:
+  mirror-tor-browser:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Fetch latest Tor Browser releases
+        id: fetch
+        run: |
+          # Fetch the latest version info from Tor Project
+          echo "Fetching latest Tor Browser version..."
+          
+          # Get the latest stable version from the distribution server
+          # Parse the directory listing for stable versions (exclude alpha/beta versions)
+          VERSION=$(curl -sL https://dist.torproject.org/torbrowser/ | \
+            grep -oP 'href="[0-9]+\.[0-9]+(\.[0-9]+)+/"' | \
+            grep -oP '[0-9]+\.[0-9]+(\.[0-9]+)+' | \
+            grep -v '[a-zA-Z]' | \
+            sort -V | tail -1)
+          
+          if [ -z "$VERSION" ]; then
+            echo "Error: Could not determine latest Tor Browser version"
+            exit 1
+          fi
+          
+          echo "Latest stable version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Create download directory
+          mkdir -p downloads
+          
+          # Base URL for downloads
+          BASE_URL="https://dist.torproject.org/torbrowser/${VERSION}"
+          
+          # Define the file patterns we want to download (portable versions for Windows, unified macOS, Linux tar.xz, Android APK)
+          declare -a patterns=(
+            "tor-browser-windows-x86_64-portable-${VERSION}.exe"
+            "tor-browser-windows-i686-portable-${VERSION}.exe"
+            "tor-browser-macos-${VERSION}.dmg"
+            "tor-browser-linux-x86_64-${VERSION}.tar.xz"
+            "tor-browser-linux-i686-${VERSION}.tar.xz"
+            "tor-browser-android-aarch64-${VERSION}.apk"
+            "tor-browser-android-armv7-${VERSION}.apk"
+            "tor-browser-android-x86_64-${VERSION}.apk"
+            "tor-browser-android-x86-${VERSION}.apk"
+          )
+          
+          # Download each file if it exists
+          echo "Downloading files..."
+          for file in "${patterns[@]}"; do
+            echo "Attempting to download $file..."
+            if curl -fL "${BASE_URL}/${file}" -o "downloads/${file}"; then
+              echo "✓ Downloaded $file ($(du -h downloads/${file} | cut -f1))"
+            else
+              echo "⚠ Failed to download $file (may not exist for this version)"
+            fi
+          done
+          
+          # List all successfully downloaded files
+          echo ""
+          echo "Successfully downloaded files:"
+          ls -lh downloads/ | tail -n +2 || echo "No files downloaded"
+          
+          # Count downloaded files
+          FILE_COUNT=$(ls -1 downloads/ 2>/dev/null | wc -l)
+          echo ""
+          echo "Total files downloaded: $FILE_COUNT"
+          
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "Error: No files were downloaded successfully"
+            exit 1
+          fi
+          
+      - name: Delete existing 'latest' release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Check if 'latest' release exists and delete it
+          if gh release view latest --json id 2>/dev/null; then
+            echo "Deleting existing 'latest' release..."
+            gh release delete latest --yes --cleanup-tag
+          else
+            echo "No existing 'latest' release found"
+          fi
+          
+      - name: Create new 'latest' release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.fetch.outputs.version }}"
+          
+          # Build release notes dynamically based on what files were downloaded
+          NOTES="Latest Tor Browser release - Version ${VERSION}
+
+          This release is automatically updated daily at midnight UTC.
+
+          ## Downloads
+          "
+          
+          # Add Windows section if files exist
+          if ls downloads/tor-browser-windows-*.exe 1> /dev/null 2>&1; then
+            NOTES+="
+          ### Windows (Portable)
+          "
+            if [ -f "downloads/tor-browser-windows-x86_64-portable-${VERSION}.exe" ]; then
+              NOTES+="- [Windows x86_64 (64-bit)](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-windows-x86_64-portable-${VERSION}.exe)
+          "
+            fi
+            if [ -f "downloads/tor-browser-windows-i686-portable-${VERSION}.exe" ]; then
+              NOTES+="- [Windows i686 (32-bit)](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-windows-i686-portable-${VERSION}.exe)
+          "
+            fi
+          fi
+          
+          # Add macOS section if files exist
+          if [ -f "downloads/tor-browser-macos-${VERSION}.dmg" ]; then
+            NOTES+="
+          ### macOS (Universal)
+          - [macOS (Intel & Apple Silicon)](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-macos-${VERSION}.dmg)
+          "
+          fi
+          
+          # Add Linux section if files exist
+          if ls downloads/tor-browser-linux-*.tar.xz 1> /dev/null 2>&1; then
+            NOTES+="
+          ### Linux
+          "
+            if [ -f "downloads/tor-browser-linux-x86_64-${VERSION}.tar.xz" ]; then
+              NOTES+="- [Linux x86_64 (64-bit)](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-linux-x86_64-${VERSION}.tar.xz)
+          "
+            fi
+            if [ -f "downloads/tor-browser-linux-i686-${VERSION}.tar.xz" ]; then
+              NOTES+="- [Linux i686 (32-bit)](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-linux-i686-${VERSION}.tar.xz)
+          "
+            fi
+          fi
+          
+          # Add Android section if files exist
+          if ls downloads/tor-browser-android-*.apk 1> /dev/null 2>&1; then
+            NOTES+="
+          ### Android
+          "
+            if [ -f "downloads/tor-browser-android-aarch64-${VERSION}.apk" ]; then
+              NOTES+="- [Android ARM64 (aarch64)](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-android-aarch64-${VERSION}.apk)
+          "
+            fi
+            if [ -f "downloads/tor-browser-android-armv7-${VERSION}.apk" ]; then
+              NOTES+="- [Android ARMv7 (32-bit)](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-android-armv7-${VERSION}.apk)
+          "
+            fi
+            if [ -f "downloads/tor-browser-android-x86_64-${VERSION}.apk" ]; then
+              NOTES+="- [Android x86_64](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-android-x86_64-${VERSION}.apk)
+          "
+            fi
+            if [ -f "downloads/tor-browser-android-x86-${VERSION}.apk" ]; then
+              NOTES+="- [Android x86](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-android-x86-${VERSION}.apk)
+          "
+            fi
+          fi
+          
+          NOTES+="
+          ---
+
+          **Note:** This is an unofficial mirror. For official releases, visit [torproject.org](https://www.torproject.org/download/)
+
+          **Version:** ${VERSION}  
+          **Updated:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          
+          # Create the release with all downloaded files
+          gh release create latest \
+            --title "Latest Tor Browser (${VERSION})" \
+            --notes "$NOTES" \
+            downloads/*
+          
+      - name: Update index.html with latest version
+        run: |
+          VERSION="${{ steps.fetch.outputs.version }}"
+          REPO="${{ github.repository }}"
+          
+          # Determine which files were actually downloaded
+          HAS_WIN_X64=false
+          HAS_WIN_I686=false
+          HAS_MACOS=false
+          HAS_LINUX_X64=false
+          HAS_LINUX_I686=false
+          HAS_ANDROID_AARCH64=false
+          HAS_ANDROID_ARMV7=false
+          HAS_ANDROID_X86_64=false
+          HAS_ANDROID_X86=false
+          
+          [ -f "downloads/tor-browser-windows-x86_64-portable-${VERSION}.exe" ] && HAS_WIN_X64=true
+          [ -f "downloads/tor-browser-windows-i686-portable-${VERSION}.exe" ] && HAS_WIN_I686=true
+          [ -f "downloads/tor-browser-macos-${VERSION}.dmg" ] && HAS_MACOS=true
+          [ -f "downloads/tor-browser-linux-x86_64-${VERSION}.tar.xz" ] && HAS_LINUX_X64=true
+          [ -f "downloads/tor-browser-linux-i686-${VERSION}.tar.xz" ] && HAS_LINUX_I686=true
+          [ -f "downloads/tor-browser-android-aarch64-${VERSION}.apk" ] && HAS_ANDROID_AARCH64=true
+          [ -f "downloads/tor-browser-android-armv7-${VERSION}.apk" ] && HAS_ANDROID_ARMV7=true
+          [ -f "downloads/tor-browser-android-x86_64-${VERSION}.apk" ] && HAS_ANDROID_X86_64=true
+          [ -f "downloads/tor-browser-android-x86-${VERSION}.apk" ] && HAS_ANDROID_X86=true
+          
+          # Build index.html dynamically
+          cat > index.html << EOF
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Tor Browser Mirror - Download Latest Release</title>
+              <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; background-color: #f4f4f4; }
+                  .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                  h1 { color: #7D4698; margin-bottom: 10px; font-size: 2em; }
+                  .subtitle { color: #666; margin-bottom: 30px; font-size: 1.1em; }
+                  .version-info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 30px; border-left: 4px solid #7D4698; }
+                  .version-info strong { color: #7D4698; }
+                  h2 { color: #7D4698; margin-top: 30px; margin-bottom: 15px; font-size: 1.5em; border-bottom: 2px solid #7D4698; padding-bottom: 5px; }
+                  .download-section { margin-bottom: 30px; }
+                  .download-link { display: block; background: #7D4698; color: white; text-decoration: none; padding: 15px 20px; border-radius: 5px; margin: 10px 0; transition: background 0.3s; }
+                  .download-link:hover { background: #5e3373; }
+                  .platform-icon { font-weight: bold; margin-right: 10px; }
+                  .warning { background: #fff3cd; border: 1px solid #ffc107; color: #856404; padding: 15px; border-radius: 5px; margin-top: 30px; }
+                  .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 0.9em; text-align: center; }
+                  a.external { color: #7D4698; text-decoration: none; }
+                  a.external:hover { text-decoration: underline; }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <h1>Tor Browser Mirror</h1>
+                  <p class="subtitle">Download the latest Tor Browser release</p>
+                  <div class="version-info">
+                      <strong>Latest Version:</strong> ${VERSION}<br>
+                      <strong>Updated:</strong> $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+                  </div>
+          EOF
+          
+          # Add Windows section if any Windows files exist
+          if [ "$HAS_WIN_X64" = true ] || [ "$HAS_WIN_I686" = true ]; then
+            cat >> index.html << EOF
+                  <h2>Windows (Portable)</h2>
+                  <div class="download-section">
+          EOF
+            if [ "$HAS_WIN_X64" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-windows-x86_64-portable-${VERSION}.exe" class="download-link">
+                          <span class="platform-icon">🪟</span> Windows x86_64 (64-bit)
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_WIN_I686" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-windows-i686-portable-${VERSION}.exe" class="download-link">
+                          <span class="platform-icon">🪟</span> Windows i686 (32-bit)
+                      </a>
+          EOF
+            fi
+            cat >> index.html << EOF
+                  </div>
+          EOF
+          fi
+          
+          # Add macOS section if available
+          if [ "$HAS_MACOS" = true ]; then
+            cat >> index.html << EOF
+                  <h2>macOS (Universal)</h2>
+                  <div class="download-section">
+                      <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-macos-${VERSION}.dmg" class="download-link">
+                          <span class="platform-icon">🍎</span> macOS (Intel & Apple Silicon)
+                      </a>
+                  </div>
+          EOF
+          fi
+          
+          # Add Linux section if any Linux files exist
+          if [ "$HAS_LINUX_X64" = true ] || [ "$HAS_LINUX_I686" = true ]; then
+            cat >> index.html << EOF
+                  <h2>Linux</h2>
+                  <div class="download-section">
+          EOF
+            if [ "$HAS_LINUX_X64" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-linux-x86_64-${VERSION}.tar.xz" class="download-link">
+                          <span class="platform-icon">🐧</span> Linux x86_64 (64-bit)
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_LINUX_I686" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-linux-i686-${VERSION}.tar.xz" class="download-link">
+                          <span class="platform-icon">🐧</span> Linux i686 (32-bit)
+                      </a>
+          EOF
+            fi
+            cat >> index.html << EOF
+                  </div>
+          EOF
+          fi
+          
+          # Add Android section if any Android files exist
+          if [ "$HAS_ANDROID_AARCH64" = true ] || [ "$HAS_ANDROID_ARMV7" = true ] || [ "$HAS_ANDROID_X86_64" = true ] || [ "$HAS_ANDROID_X86" = true ]; then
+            cat >> index.html << EOF
+                  <h2>Android</h2>
+                  <div class="download-section">
+          EOF
+            if [ "$HAS_ANDROID_AARCH64" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-android-aarch64-${VERSION}.apk" class="download-link">
+                          <span class="platform-icon">🤖</span> Android ARM64 (aarch64)
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_ANDROID_ARMV7" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-android-armv7-${VERSION}.apk" class="download-link">
+                          <span class="platform-icon">🤖</span> Android ARMv7 (32-bit)
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_ANDROID_X86_64" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-android-x86_64-${VERSION}.apk" class="download-link">
+                          <span class="platform-icon">🤖</span> Android x86_64
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_ANDROID_X86" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-android-x86-${VERSION}.apk" class="download-link">
+                          <span class="platform-icon">🤖</span> Android x86
+                      </a>
+          EOF
+            fi
+            cat >> index.html << EOF
+                  </div>
+          EOF
+          fi
+          
+          # Add footer
+          cat >> index.html << EOF
+                  <div class="warning">
+                      <strong>⚠️ Important:</strong> This is an unofficial mirror of Tor Browser releases. 
+                      For official releases and more information, please visit 
+                      <a href="https://www.torproject.org/download/" class="external">torproject.org</a>
+                  </div>
+                  <div class="footer">
+                      <p>Automated mirror updated daily | <a href="https://github.com/${REPO}" class="external">View on GitHub</a></p>
+                  </div>
+              </div>
+          </body>
+          </html>
+          EOF
+          
+      - name: Commit and push updated index.html
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update index.html with version ${{ steps.fetch.outputs.version }}"
+            git push
+          fi
