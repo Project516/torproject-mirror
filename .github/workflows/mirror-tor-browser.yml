@@ -61,11 +61,17 @@ jobs:
           # Download Onion Browser for iOS from its GitHub repository
           echo ""
           echo "Fetching Onion Browser (iOS) from OnionBrowser repository..."
-          ONION_BROWSER_URL=$(curl -sL "https://api.github.com/repos/OnionBrowser/OnionBrowser/releases/latest" | \
-            grep -o '"browser_download_url": *"[^"]*OnionBrowser\.ipa"' | \
-            sed 's/"browser_download_url": *"//' | sed 's/"$//')
           
-          if [ -n "$ONION_BROWSER_URL" ]; then
+          # Install jq if not available
+          if ! command -v jq &> /dev/null; then
+            echo "Installing jq..."
+            sudo apt-get update -qq && sudo apt-get install -y -qq jq
+          fi
+          
+          ONION_BROWSER_URL=$(curl -sL "https://api.github.com/repos/OnionBrowser/OnionBrowser/releases/latest" | \
+            jq -r '.assets[] | select(.name == "OnionBrowser.ipa") | .browser_download_url')
+          
+          if [ -n "$ONION_BROWSER_URL" ] && [ "$ONION_BROWSER_URL" != "null" ]; then
             echo "Found Onion Browser IPA: $ONION_BROWSER_URL"
             if curl -fL "$ONION_BROWSER_URL" -o "downloads/OnionBrowser.ipa"; then
               echo "✓ Downloaded OnionBrowser.ipa ($(du -h downloads/OnionBrowser.ipa | cut -f1))"
