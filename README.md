@@ -11,11 +11,11 @@ Automated GitHub mirror for the latest Tor Browser releases across all platforms
   - macOS (Universal - Intel and Apple Silicon)
   - Linux (x86_64 and i686)
   - Android (aarch64, armv7, x86_64, x86)
-- **Static Download Page**: Simple HTML page for easy downloads at [https://project516.github.io/torproject-mirror/](https://project516.github.io/torproject-mirror/)
+- **Static Download Page**: Simple HTML page for easy downloads at [https://project516.github.io/tor-mirror/](https://project516.github.io/torproject-mirror/)
 
 ## Usage
 
-Visit the [Releases](https://github.com/Project516/torproject-mirror/releases/latest) page or the [download page](https://project516.github.io/torproject-mirror/) to get the latest Tor Browser for your platform.
+Visit the [Releases](https://github.com/Project516/tor-mirror/releases/latest) page or the [download page](https://project516.github.io/torproject-mirror/) to get the latest Tor Browser for your platform.
 
 ## How It Works
 
@@ -28,7 +28,7 @@ Visit the [Releases](https://github.com/Project516/torproject-mirror/releases/la
 
 ## Manual Trigger
 
-You can manually trigger the mirror update from the [Actions](https://github.com/Project516/torproject-mirror/actions) tab.
+You can manually trigger the mirror update from the [Actions](https://github.com/Project516/tor-mirror/actions) tab.
 
 ## Disclaimer
 
