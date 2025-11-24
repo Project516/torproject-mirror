@@ -58,6 +58,30 @@ jobs:
             "tor-browser-android-x86-${VERSION}.apk"
           )
           
+          # Download Onion Browser for iOS from its GitHub repository
+          echo ""
+          echo "Fetching Onion Browser (iOS) from OnionBrowser repository..."
+          
+          # Fetch the latest release info from OnionBrowser repository
+          if ONION_BROWSER_API_RESPONSE=$(curl -fsSL "https://api.github.com/repos/OnionBrowser/OnionBrowser/releases/latest" 2>/dev/null) && [ -n "$ONION_BROWSER_API_RESPONSE" ]; then
+            # Extract the IPA download URL using jq (returns empty string if not found)
+            ONION_BROWSER_URL=$(echo "$ONION_BROWSER_API_RESPONSE" | \
+              jq -r '.assets[] | select(.name == "OnionBrowser.ipa") | .browser_download_url' 2>/dev/null || echo "")
+            
+            if [ -n "$ONION_BROWSER_URL" ] && [ "$ONION_BROWSER_URL" != "null" ]; then
+              echo "Found Onion Browser IPA: $ONION_BROWSER_URL"
+              if curl -fL "$ONION_BROWSER_URL" -o "downloads/OnionBrowser.ipa"; then
+                echo "✓ Downloaded OnionBrowser.ipa ($(du -h downloads/OnionBrowser.ipa | cut -f1))"
+              else
+                echo "⚠ Failed to download OnionBrowser.ipa"
+              fi
+            else
+              echo "⚠ Could not find OnionBrowser.ipa in latest release"
+            fi
+          else
+            echo "⚠ Failed to fetch OnionBrowser release information from GitHub API"
+          fi
+          
           # Download each file if it exists
           echo "Downloading files..."
           for file in "${patterns[@]}"; do
@@ -171,6 +195,14 @@ jobs:
             fi
           fi
           
+          # Add iOS section if Onion Browser exists
+          if [ -f "downloads/OnionBrowser.ipa" ]; then
+            NOTES+="
+          ### iOS
+          - [Onion Browser (iOS)](https://github.com/${{ github.repository }}/releases/download/latest/OnionBrowser.ipa)
+          "
+          fi
+          
           NOTES+="
           ---
 
@@ -200,6 +232,7 @@ jobs:
           HAS_ANDROID_ARMV7=false
           HAS_ANDROID_X86_64=false
           HAS_ANDROID_X86=false
+          HAS_IOS=false
           
           [ -f "downloads/tor-browser-windows-x86_64-portable-${VERSION}.exe" ] && HAS_WIN_X64=true
           [ -f "downloads/tor-browser-windows-i686-portable-${VERSION}.exe" ] && HAS_WIN_I686=true
@@ -210,6 +243,7 @@ jobs:
           [ -f "downloads/tor-browser-android-armv7-${VERSION}.apk" ] && HAS_ANDROID_ARMV7=true
           [ -f "downloads/tor-browser-android-x86_64-${VERSION}.apk" ] && HAS_ANDROID_X86_64=true
           [ -f "downloads/tor-browser-android-x86-${VERSION}.apk" ] && HAS_ANDROID_X86=true
+          [ -f "downloads/OnionBrowser.ipa" ] && HAS_IOS=true
           
           # Build index.html dynamically
           cat > index.html << EOF
@@ -345,6 +379,18 @@ jobs:
           EOF
             fi
             cat >> index.html << EOF
+                  </div>
+          EOF
+          fi
+          
+          # Add iOS section if available
+          if [ "$HAS_IOS" = true ]; then
+            cat >> index.html << EOF
+                  <h2>iOS</h2>
+                  <div class="download-section">
+                      <a href="https://github.com/${REPO}/releases/download/latest/OnionBrowser.ipa" class="download-link">
+                          <span class="platform-icon">📱</span> Onion Browser (iOS)
+                      </a>
                   </div>
           EOF
           fi

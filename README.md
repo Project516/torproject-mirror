@@ -11,6 +11,7 @@ Automated GitHub mirror for the latest Tor Browser releases across all platforms
   - macOS (Universal - Intel and Apple Silicon)
   - Linux (x86_64 and i686)
   - Android (aarch64, armv7, x86_64, x86)
+  - iOS (Onion Browser)
 - **Static Download Page**: Simple HTML page for easy downloads at [https://project516.github.io/tor-mirror/](https://project516.github.io/torproject-mirror/)
 
 ## Usage
@@ -22,9 +23,10 @@ Visit the [Releases](https://github.com/Project516/tor-mirror/releases/latest) p
 1. A GitHub Actions workflow runs daily at midnight UTC
 2. It fetches the latest stable Tor Browser version from `https://dist.torproject.org/torbrowser/`
 3. Downloads all platform-specific installers
-4. Deletes the existing "latest" release
-5. Creates a new "latest" release with all the downloaded files
-6. Updates the `index.html` page with version information
+4. Downloads Onion Browser for iOS from `https://github.com/OnionBrowser/OnionBrowser/releases/latest/`
+5. Deletes the existing "latest" release
+6. Creates a new "latest" release with all the downloaded files
+7. Updates the `index.html` page with version information
 
 ## Manual Trigger
 
