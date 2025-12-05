@@ -57,29 +57,55 @@ jobs:
             "tor-browser-android-x86-${VERSION}.apk"
           )
           
-          # Download Linux aarch64 nightly build with dynamic date
+          # Download Tor nightly builds with dynamic date
           echo ""
-          echo "Fetching Linux aarch64 nightly build..."
+          echo "Fetching Tor nightly builds..."
           
-          # Try to download nightly build for today and up to 3 days back
-          DOWNLOADED_NIGHTLY=false
+          # Define nightly build patterns for different platforms
+          declare -A nightly_patterns=(
+            ["nightly-linux-x86_64"]="tor-browser-linux-x86_64-tbb-nightly.DATE.tar.xz"
+            ["nightly-linux-aarch64"]="tor-browser-linux-aarch64-tbb-nightly.DATE.tar.xz"
+            ["nightly-macos"]="tor-browser-macos-tbb-nightly.DATE.dmg"
+            ["nightly-windows-x86_64"]="tor-browser-windows-x86_64-portable-tbb-nightly.DATE.exe"
+            ["nightly-windows-i686"]="tor-browser-windows-i686-portable-tbb-nightly.DATE.exe"
+            ["nightly-android-aarch64"]="tor-browser-android-aarch64-tbb-nightly.DATE.apk"
+            ["nightly-android-armv7"]="tor-browser-android-armv7-tbb-nightly.DATE.apk"
+            ["nightly-android-x86_64"]="tor-browser-android-x86_64-tbb-nightly.DATE.apk"
+            ["nightly-android-x86"]="tor-browser-android-x86-tbb-nightly.DATE.apk"
+          )
+          
+          # Try to download nightly builds for today and up to 3 days back
           for i in 0 1 2 3; do
             NIGHTLY_DATE=$(date -u -d "$i days ago" '+%Y.%m.%d' 2>/dev/null || date -u -v-${i}d '+%Y.%m.%d' 2>/dev/null)
-            NIGHTLY_BASE_URL="https://nightlies.tbb.torproject.org/nightly-builds/tor-browser-builds/tbb-nightly.${NIGHTLY_DATE}/nightly-linux-aarch64"
-            NIGHTLY_FILE="tor-browser-linux-aarch64-tbb-nightly.${NIGHTLY_DATE}.tar.xz"
+            echo ""
+            echo "Trying nightly builds for date: ${NIGHTLY_DATE}"
             
-            echo "Attempting to download ${NIGHTLY_FILE} (date: ${NIGHTLY_DATE})..."
-            if curl -fL "${NIGHTLY_BASE_URL}/${NIGHTLY_FILE}" -o "downloads/${NIGHTLY_FILE}"; then
-              echo "✓ Downloaded ${NIGHTLY_FILE} ($(du -h downloads/${NIGHTLY_FILE} | cut -f1))"
-              DOWNLOADED_NIGHTLY=true
+            DOWNLOADED_COUNT=0
+            for platform in "${!nightly_patterns[@]}"; do
+              NIGHTLY_BASE_URL="https://nightlies.tbb.torproject.org/nightly-builds/tor-browser-builds/tbb-nightly.${NIGHTLY_DATE}/${platform}"
+              NIGHTLY_FILE=$(echo "${nightly_patterns[$platform]}" | sed "s/DATE/${NIGHTLY_DATE}/g")
+              
+              echo "Attempting to download ${NIGHTLY_FILE}..."
+              if curl -fL "${NIGHTLY_BASE_URL}/${NIGHTLY_FILE}" -o "downloads/${NIGHTLY_FILE}"; then
+                echo "✓ Downloaded ${NIGHTLY_FILE} ($(du -h downloads/${NIGHTLY_FILE} | cut -f1))"
+                ((DOWNLOADED_COUNT++))
+              else
+                echo "⚠ ${platform} nightly build not available for ${NIGHTLY_DATE}"
+              fi
+            done
+            
+            # If we successfully downloaded at least one nightly build, stop trying older dates
+            if [ $DOWNLOADED_COUNT -gt 0 ]; then
+              echo ""
+              echo "✓ Successfully downloaded ${DOWNLOADED_COUNT} nightly builds for ${NIGHTLY_DATE}"
               break
             else
-              echo "⚠ Nightly build not available for ${NIGHTLY_DATE}, trying previous date..."
+              echo "⚠ No nightly builds available for ${NIGHTLY_DATE}, trying previous date..."
             fi
           done
           
-          if [ "$DOWNLOADED_NIGHTLY" = false ]; then
-            echo "⚠ Failed to download any aarch64 nightly build from the last 4 days"
+          if [ $DOWNLOADED_COUNT -eq 0 ]; then
+            echo "⚠ Failed to download any nightly builds from the last 4 days"
           fi
           
           # Download Linux aarch64 community build from tor-mullvad-aarch64 repository
@@ -220,6 +246,13 @@ jobs:
               NOTES+="- [Linux i686 (32-bit)](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-linux-i686-${VERSION}.tar.xz)
           "
             fi
+            # Check for x86_64 nightly build
+            LINUX_X64_NIGHTLY_FILE=$(ls downloads/tor-browser-linux-x86_64-tbb-nightly.*.tar.xz 2>/dev/null | head -n1)
+            if [ -n "$LINUX_X64_NIGHTLY_FILE" ]; then
+              LINUX_X64_NIGHTLY_BASENAME=$(basename "$LINUX_X64_NIGHTLY_FILE")
+              NOTES+="- [Linux x86_64 (64-bit) - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${LINUX_X64_NIGHTLY_BASENAME})
+          "
+            fi
             # Check for aarch64 builds (nightly and community)
             # Check for community aarch64 build first (stable release)
             AARCH64_COMMUNITY_FILE=$(ls downloads/tor-browser-linux-aarch64-[0-9]*.tar.xz 2>/dev/null | grep -v "tbb-nightly" | head -n1)
@@ -233,6 +266,35 @@ jobs:
             if [ -n "$AARCH64_NIGHTLY_FILE" ]; then
               AARCH64_NIGHTLY_BASENAME=$(basename "$AARCH64_NIGHTLY_FILE")
               NOTES+="- [Linux aarch64 (ARM64) - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${AARCH64_NIGHTLY_BASENAME})
+          "
+            fi
+          fi
+          
+          # Add macOS nightly section if files exist
+          MACOS_NIGHTLY_FILE=$(ls downloads/tor-browser-macos-tbb-nightly.*.dmg 2>/dev/null | head -n1)
+          if [ -n "$MACOS_NIGHTLY_FILE" ]; then
+            MACOS_NIGHTLY_BASENAME=$(basename "$MACOS_NIGHTLY_FILE")
+            NOTES+="
+          ### macOS Nightly
+          - [macOS - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${MACOS_NIGHTLY_BASENAME})
+          "
+          fi
+          
+          # Add Windows nightly section if files exist
+          if ls downloads/tor-browser-windows-*-tbb-nightly.*.exe 1> /dev/null 2>&1; then
+            NOTES+="
+          ### Windows Nightly (Portable)
+          "
+            WIN_X64_NIGHTLY_FILE=$(ls downloads/tor-browser-windows-x86_64-portable-tbb-nightly.*.exe 2>/dev/null | head -n1)
+            if [ -n "$WIN_X64_NIGHTLY_FILE" ]; then
+              WIN_X64_NIGHTLY_BASENAME=$(basename "$WIN_X64_NIGHTLY_FILE")
+              NOTES+="- [Windows x86_64 (64-bit) - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${WIN_X64_NIGHTLY_BASENAME})
+          "
+            fi
+            WIN_I686_NIGHTLY_FILE=$(ls downloads/tor-browser-windows-i686-portable-tbb-nightly.*.exe 2>/dev/null | head -n1)
+            if [ -n "$WIN_I686_NIGHTLY_FILE" ]; then
+              WIN_I686_NIGHTLY_BASENAME=$(basename "$WIN_I686_NIGHTLY_FILE")
+              NOTES+="- [Windows i686 (32-bit) - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${WIN_I686_NIGHTLY_BASENAME})
           "
             fi
           fi
@@ -256,6 +318,37 @@ jobs:
             fi
             if [ -f "downloads/tor-browser-android-x86-${VERSION}.apk" ]; then
               NOTES+="- [Android x86](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-android-x86-${VERSION}.apk)
+          "
+            fi
+          fi
+          
+          # Add Android nightly section if files exist
+          if ls downloads/tor-browser-android-*-tbb-nightly.*.apk 1> /dev/null 2>&1; then
+            NOTES+="
+          ### Android Nightly
+          "
+            ANDROID_AARCH64_NIGHTLY_FILE=$(ls downloads/tor-browser-android-aarch64-tbb-nightly.*.apk 2>/dev/null | head -n1)
+            if [ -n "$ANDROID_AARCH64_NIGHTLY_FILE" ]; then
+              ANDROID_AARCH64_NIGHTLY_BASENAME=$(basename "$ANDROID_AARCH64_NIGHTLY_FILE")
+              NOTES+="- [Android ARM64 (aarch64) - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${ANDROID_AARCH64_NIGHTLY_BASENAME})
+          "
+            fi
+            ANDROID_ARMV7_NIGHTLY_FILE=$(ls downloads/tor-browser-android-armv7-tbb-nightly.*.apk 2>/dev/null | head -n1)
+            if [ -n "$ANDROID_ARMV7_NIGHTLY_FILE" ]; then
+              ANDROID_ARMV7_NIGHTLY_BASENAME=$(basename "$ANDROID_ARMV7_NIGHTLY_FILE")
+              NOTES+="- [Android ARMv7 (32-bit) - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${ANDROID_ARMV7_NIGHTLY_BASENAME})
+          "
+            fi
+            ANDROID_X86_64_NIGHTLY_FILE=$(ls downloads/tor-browser-android-x86_64-tbb-nightly.*.apk 2>/dev/null | head -n1)
+            if [ -n "$ANDROID_X86_64_NIGHTLY_FILE" ]; then
+              ANDROID_X86_64_NIGHTLY_BASENAME=$(basename "$ANDROID_X86_64_NIGHTLY_FILE")
+              NOTES+="- [Android x86_64 - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${ANDROID_X86_64_NIGHTLY_BASENAME})
+          "
+            fi
+            ANDROID_X86_NIGHTLY_FILE=$(ls downloads/tor-browser-android-x86-tbb-nightly.*.apk 2>/dev/null | head -n1)
+            if [ -n "$ANDROID_X86_NIGHTLY_FILE" ]; then
+              ANDROID_X86_NIGHTLY_BASENAME=$(basename "$ANDROID_X86_NIGHTLY_FILE")
+              NOTES+="- [Android x86 - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${ANDROID_X86_NIGHTLY_BASENAME})
           "
             fi
           fi
@@ -300,6 +393,17 @@ jobs:
           HAS_ANDROID_X86=false
           HAS_IOS=false
           
+          # Nightly builds
+          HAS_WIN_X64_NIGHTLY=false
+          HAS_WIN_I686_NIGHTLY=false
+          HAS_MACOS_NIGHTLY=false
+          HAS_LINUX_X64_NIGHTLY=false
+          HAS_LINUX_AARCH64_NIGHTLY=false
+          HAS_ANDROID_AARCH64_NIGHTLY=false
+          HAS_ANDROID_ARMV7_NIGHTLY=false
+          HAS_ANDROID_X86_64_NIGHTLY=false
+          HAS_ANDROID_X86_NIGHTLY=false
+          
           [ -f "downloads/tor-browser-windows-x86_64-portable-${VERSION}.exe" ] && HAS_WIN_X64=true
           [ -f "downloads/tor-browser-windows-i686-portable-${VERSION}.exe" ] && HAS_WIN_I686=true
           [ -f "downloads/tor-browser-macos-${VERSION}.dmg" ] && HAS_MACOS=true
@@ -310,6 +414,31 @@ jobs:
           [ -f "downloads/tor-browser-android-x86_64-${VERSION}.apk" ] && HAS_ANDROID_X86_64=true
           [ -f "downloads/tor-browser-android-x86-${VERSION}.apk" ] && HAS_ANDROID_X86=true
           [ -f "downloads/OnionBrowser.ipa" ] && HAS_IOS=true
+          
+          # Check for nightly builds
+          WIN_X64_NIGHTLY_FILE=$(ls downloads/tor-browser-windows-x86_64-portable-tbb-nightly.*.exe 2>/dev/null | head -n1)
+          [ -n "$WIN_X64_NIGHTLY_FILE" ] && HAS_WIN_X64_NIGHTLY=true && WIN_X64_NIGHTLY_BASENAME=$(basename "$WIN_X64_NIGHTLY_FILE")
+          
+          WIN_I686_NIGHTLY_FILE=$(ls downloads/tor-browser-windows-i686-portable-tbb-nightly.*.exe 2>/dev/null | head -n1)
+          [ -n "$WIN_I686_NIGHTLY_FILE" ] && HAS_WIN_I686_NIGHTLY=true && WIN_I686_NIGHTLY_BASENAME=$(basename "$WIN_I686_NIGHTLY_FILE")
+          
+          MACOS_NIGHTLY_FILE=$(ls downloads/tor-browser-macos-tbb-nightly.*.dmg 2>/dev/null | head -n1)
+          [ -n "$MACOS_NIGHTLY_FILE" ] && HAS_MACOS_NIGHTLY=true && MACOS_NIGHTLY_BASENAME=$(basename "$MACOS_NIGHTLY_FILE")
+          
+          LINUX_X64_NIGHTLY_FILE=$(ls downloads/tor-browser-linux-x86_64-tbb-nightly.*.tar.xz 2>/dev/null | head -n1)
+          [ -n "$LINUX_X64_NIGHTLY_FILE" ] && HAS_LINUX_X64_NIGHTLY=true && LINUX_X64_NIGHTLY_BASENAME=$(basename "$LINUX_X64_NIGHTLY_FILE")
+          
+          ANDROID_AARCH64_NIGHTLY_FILE=$(ls downloads/tor-browser-android-aarch64-tbb-nightly.*.apk 2>/dev/null | head -n1)
+          [ -n "$ANDROID_AARCH64_NIGHTLY_FILE" ] && HAS_ANDROID_AARCH64_NIGHTLY=true && ANDROID_AARCH64_NIGHTLY_BASENAME=$(basename "$ANDROID_AARCH64_NIGHTLY_FILE")
+          
+          ANDROID_ARMV7_NIGHTLY_FILE=$(ls downloads/tor-browser-android-armv7-tbb-nightly.*.apk 2>/dev/null | head -n1)
+          [ -n "$ANDROID_ARMV7_NIGHTLY_FILE" ] && HAS_ANDROID_ARMV7_NIGHTLY=true && ANDROID_ARMV7_NIGHTLY_BASENAME=$(basename "$ANDROID_ARMV7_NIGHTLY_FILE")
+          
+          ANDROID_X86_64_NIGHTLY_FILE=$(ls downloads/tor-browser-android-x86_64-tbb-nightly.*.apk 2>/dev/null | head -n1)
+          [ -n "$ANDROID_X86_64_NIGHTLY_FILE" ] && HAS_ANDROID_X86_64_NIGHTLY=true && ANDROID_X86_64_NIGHTLY_BASENAME=$(basename "$ANDROID_X86_64_NIGHTLY_FILE")
+          
+          ANDROID_X86_NIGHTLY_FILE=$(ls downloads/tor-browser-android-x86-tbb-nightly.*.apk 2>/dev/null | head -n1)
+          [ -n "$ANDROID_X86_NIGHTLY_FILE" ] && HAS_ANDROID_X86_NIGHTLY=true && ANDROID_X86_NIGHTLY_BASENAME=$(basename "$ANDROID_X86_NIGHTLY_FILE")
           
           # Check for aarch64 builds (both community and nightly)
           HAS_LINUX_AARCH64_COMMUNITY=false
@@ -397,6 +526,31 @@ jobs:
           EOF
           fi
           
+          # Add Windows Nightly section if any Windows nightly files exist
+          if [ "$HAS_WIN_X64_NIGHTLY" = true ] || [ "$HAS_WIN_I686_NIGHTLY" = true ]; then
+            cat >> index.html << EOF
+                  <h2>Windows Nightly (Portable)</h2>
+                  <div class="download-section">
+          EOF
+            if [ "$HAS_WIN_X64_NIGHTLY" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/${WIN_X64_NIGHTLY_BASENAME}" class="download-link">
+                          <span class="platform-icon">🪟</span> Windows x86_64 (64-bit) - Nightly
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_WIN_I686_NIGHTLY" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/${WIN_I686_NIGHTLY_BASENAME}" class="download-link">
+                          <span class="platform-icon">🪟</span> Windows i686 (32-bit) - Nightly
+                      </a>
+          EOF
+            fi
+            cat >> index.html << EOF
+                  </div>
+          EOF
+          fi
+          
           # Add macOS section if available
           if [ "$HAS_MACOS" = true ]; then
             cat >> index.html << EOF
@@ -409,8 +563,20 @@ jobs:
           EOF
           fi
           
+          # Add macOS Nightly section if available
+          if [ "$HAS_MACOS_NIGHTLY" = true ]; then
+            cat >> index.html << EOF
+                  <h2>macOS Nightly</h2>
+                  <div class="download-section">
+                      <a href="https://github.com/${REPO}/releases/download/latest/${MACOS_NIGHTLY_BASENAME}" class="download-link">
+                          <span class="platform-icon">🍎</span> macOS - Nightly
+                      </a>
+                  </div>
+          EOF
+          fi
+          
           # Add Linux section if any Linux files exist
-          if [ "$HAS_LINUX_X64" = true ] || [ "$HAS_LINUX_I686" = true ] || [ "$HAS_LINUX_AARCH64" = true ]; then
+          if [ "$HAS_LINUX_X64" = true ] || [ "$HAS_LINUX_I686" = true ] || [ "$HAS_LINUX_AARCH64" = true ] || [ "$HAS_LINUX_X64_NIGHTLY" = true ]; then
             cat >> index.html << EOF
                   <h2>Linux</h2>
                   <div class="download-section">
@@ -419,6 +585,13 @@ jobs:
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-linux-x86_64-${VERSION}.tar.xz" class="download-link">
                           <span class="platform-icon">🐧</span> Linux x86_64 (64-bit)
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_LINUX_X64_NIGHTLY" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/${LINUX_X64_NIGHTLY_BASENAME}" class="download-link">
+                          <span class="platform-icon">🐧</span> Linux x86_64 (64-bit) - Nightly
                       </a>
           EOF
             fi
@@ -479,6 +652,45 @@ jobs:
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-android-x86-${VERSION}.apk" class="download-link">
                           <span class="platform-icon">🤖</span> Android x86
+                      </a>
+          EOF
+            fi
+            cat >> index.html << EOF
+                  </div>
+          EOF
+          fi
+          
+          # Add Android Nightly section if any Android nightly files exist
+          if [ "$HAS_ANDROID_AARCH64_NIGHTLY" = true ] || [ "$HAS_ANDROID_ARMV7_NIGHTLY" = true ] || [ "$HAS_ANDROID_X86_64_NIGHTLY" = true ] || [ "$HAS_ANDROID_X86_NIGHTLY" = true ]; then
+            cat >> index.html << EOF
+                  <h2>Android Nightly</h2>
+                  <div class="download-section">
+          EOF
+            if [ "$HAS_ANDROID_AARCH64_NIGHTLY" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/${ANDROID_AARCH64_NIGHTLY_BASENAME}" class="download-link">
+                          <span class="platform-icon">🤖</span> Android ARM64 (aarch64) - Nightly
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_ANDROID_ARMV7_NIGHTLY" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/${ANDROID_ARMV7_NIGHTLY_BASENAME}" class="download-link">
+                          <span class="platform-icon">🤖</span> Android ARMv7 (32-bit) - Nightly
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_ANDROID_X86_64_NIGHTLY" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/${ANDROID_X86_64_NIGHTLY_BASENAME}" class="download-link">
+                          <span class="platform-icon">🤖</span> Android x86_64 - Nightly
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_ANDROID_X86_NIGHTLY" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/${ANDROID_X86_NIGHTLY_BASENAME}" class="download-link">
+                          <span class="platform-icon">🤖</span> Android x86 - Nightly
                       </a>
           EOF
             fi
