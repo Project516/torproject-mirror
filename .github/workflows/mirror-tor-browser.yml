@@ -30,32 +30,43 @@ jobs:
             grep -v '[a-zA-Z]' | \
             sort -V | tail -1)
           
-          if [ -z "$VERSION" ]; then
-            echo "Error: Could not determine latest Tor Browser version"
-            exit 1
-          fi
-          
-          echo "Latest stable version: $VERSION"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          
           # Create download directory
           mkdir -p downloads
           
-          # Base URL for downloads
-          BASE_URL="https://dist.torproject.org/torbrowser/${VERSION}"
-          
-          # Define the file patterns we want to download (portable versions for Windows, unified macOS, Linux tar.xz, Android APK)
-          declare -a patterns=(
-            "tor-browser-windows-x86_64-portable-${VERSION}.exe"
-            "tor-browser-windows-i686-portable-${VERSION}.exe"
-            "tor-browser-macos-${VERSION}.dmg"
-            "tor-browser-linux-x86_64-${VERSION}.tar.xz"
-            "tor-browser-linux-i686-${VERSION}.tar.xz"
-            "tor-browser-android-aarch64-${VERSION}.apk"
-            "tor-browser-android-armv7-${VERSION}.apk"
-            "tor-browser-android-x86_64-${VERSION}.apk"
-            "tor-browser-android-x86-${VERSION}.apk"
-          )
+          if [ -z "$VERSION" ]; then
+            echo "Warning: Could not determine latest Tor Browser version"
+            echo "Will skip stable releases but continue with nightly and community builds"
+          else
+            echo "Latest stable version: $VERSION"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            
+            # Base URL for downloads
+            BASE_URL="https://dist.torproject.org/torbrowser/${VERSION}"
+            
+            # Define the file patterns we want to download (portable versions for Windows, unified macOS, Linux tar.xz, Android APK)
+            declare -a patterns=(
+              "tor-browser-windows-x86_64-portable-${VERSION}.exe"
+              "tor-browser-windows-i686-portable-${VERSION}.exe"
+              "tor-browser-macos-${VERSION}.dmg"
+              "tor-browser-linux-x86_64-${VERSION}.tar.xz"
+              "tor-browser-linux-i686-${VERSION}.tar.xz"
+              "tor-browser-android-aarch64-${VERSION}.apk"
+              "tor-browser-android-armv7-${VERSION}.apk"
+              "tor-browser-android-x86_64-${VERSION}.apk"
+              "tor-browser-android-x86-${VERSION}.apk"
+            )
+            
+            # Download each file if it exists
+            echo "Downloading stable release files..."
+            for file in "${patterns[@]}"; do
+              echo "Attempting to download $file..."
+              if curl -fL "${BASE_URL}/${file}" -o "downloads/${file}"; then
+                echo "✓ Downloaded $file ($(du -h downloads/${file} | cut -f1))"
+              else
+                echo "⚠ Failed to download $file (may not exist for this version)"
+              fi
+            done
+          fi
           
           # Download Tor nightly builds with dynamic date
           echo ""
@@ -158,17 +169,6 @@ jobs:
             echo "⚠ Failed to fetch OnionBrowser release information from GitHub API"
           fi
           
-          # Download each file if it exists
-          echo "Downloading files..."
-          for file in "${patterns[@]}"; do
-            echo "Attempting to download $file..."
-            if curl -fL "${BASE_URL}/${file}" -o "downloads/${file}"; then
-              echo "✓ Downloaded $file ($(du -h downloads/${file} | cut -f1))"
-            else
-              echo "⚠ Failed to download $file (may not exist for this version)"
-            fi
-          done
-          
           # List all successfully downloaded files
           echo ""
           echo "Successfully downloaded files:"
@@ -180,11 +180,14 @@ jobs:
           echo "Total files downloaded: $FILE_COUNT"
           
           if [ "$FILE_COUNT" -eq 0 ]; then
-            echo "Error: No files were downloaded successfully"
-            exit 1
+            echo "Warning: No files were downloaded successfully"
+            echo "Skipping release update - will try again on next run"
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
           
       - name: Delete existing 'latest' release
+        if: steps.fetch.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -197,10 +200,16 @@ jobs:
           fi
           
       - name: Create new 'latest' release
+        if: steps.fetch.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ steps.fetch.outputs.version }}"
+          
+          # Use a default version if VERSION is not set
+          if [ -z "$VERSION" ]; then
+            VERSION="nightly-$(date -u '+%Y-%m-%d')"
+          fi
           
           # Build release notes dynamically based on what files were downloaded
           NOTES="Latest Tor Browser release - Version ${VERSION}
@@ -376,9 +385,15 @@ jobs:
             downloads/*
           
       - name: Update index.html with latest version
+        if: steps.fetch.outputs.skip != 'true'
         run: |
           VERSION="${{ steps.fetch.outputs.version }}"
           REPO="${{ github.repository }}"
+          
+          # Use a default version if VERSION is not set
+          if [ -z "$VERSION" ]; then
+            VERSION="nightly-$(date -u '+%Y-%m-%d')"
+          fi
           
           # Determine which files were actually downloaded
           HAS_WIN_X64=false
@@ -720,6 +735,7 @@ jobs:
           EOF
           
       - name: Commit and push updated index.html
+        if: steps.fetch.outputs.skip != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
