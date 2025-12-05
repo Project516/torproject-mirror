@@ -569,7 +569,7 @@ jobs:
           fi
           
           # Add Linux section if any Linux files exist
-          if [ "$HAS_LINUX_X64" = true ] || [ "$HAS_LINUX_I686" = true ] || [ "$HAS_LINUX_AARCH64" = true ] || [ "$HAS_LINUX_X64_NIGHTLY" = true ]; then
+          if [ "$HAS_LINUX_X64" = true ] || [ "$HAS_LINUX_I686" = true ] || [ "$HAS_LINUX_AARCH64" = true ] || [ "$HAS_LINUX_X64_NIGHTLY" = true ] || [ "$HAS_LINUX_AARCH64_NIGHTLY" = true ]; then
             cat >> index.html << EOF
                   <h2>Linux</h2>
                   <div class="download-section">
