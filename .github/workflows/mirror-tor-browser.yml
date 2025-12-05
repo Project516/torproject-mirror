@@ -442,7 +442,6 @@ jobs:
           
           # Check for aarch64 builds (both community and nightly)
           HAS_LINUX_AARCH64_COMMUNITY=false
-          HAS_LINUX_AARCH64_NIGHTLY=false
           
           # Check for community aarch64 build (stable release)
           LINUX_AARCH64_COMMUNITY_FILE=$(ls downloads/tor-browser-linux-aarch64-[0-9]*.tar.xz 2>/dev/null | grep -v "tbb-nightly" | head -n1)
@@ -451,7 +450,7 @@ jobs:
             LINUX_AARCH64_COMMUNITY_BASENAME=$(basename "$LINUX_AARCH64_COMMUNITY_FILE")
           fi
           
-          # Check for nightly aarch64 build
+          # Check for nightly aarch64 build (already checked above)
           LINUX_AARCH64_NIGHTLY_FILE=$(ls downloads/tor-browser-linux-aarch64-tbb-nightly.*.tar.xz 2>/dev/null | head -n1)
           if [ -n "$LINUX_AARCH64_NIGHTLY_FILE" ]; then
             HAS_LINUX_AARCH64_NIGHTLY=true
