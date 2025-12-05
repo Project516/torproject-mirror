@@ -61,16 +61,51 @@ jobs:
           echo ""
           echo "Fetching Linux aarch64 nightly build..."
           
-          # Get current date in YYYY.MM.DD format
-          NIGHTLY_DATE=$(date -u '+%Y.%m.%d')
-          NIGHTLY_BASE_URL="https://nightlies.tbb.torproject.org/nightly-builds/tor-browser-builds/tbb-nightly.${NIGHTLY_DATE}/nightly-linux-aarch64"
-          NIGHTLY_FILE="tor-browser-linux-aarch64-tbb-nightly.${NIGHTLY_DATE}.tar.xz"
+          # Try to download nightly build for today and up to 3 days back
+          DOWNLOADED_NIGHTLY=false
+          for i in 0 1 2 3; do
+            NIGHTLY_DATE=$(date -u -d "$i days ago" '+%Y.%m.%d' 2>/dev/null || date -u -v-${i}d '+%Y.%m.%d' 2>/dev/null)
+            NIGHTLY_BASE_URL="https://nightlies.tbb.torproject.org/nightly-builds/tor-browser-builds/tbb-nightly.${NIGHTLY_DATE}/nightly-linux-aarch64"
+            NIGHTLY_FILE="tor-browser-linux-aarch64-tbb-nightly.${NIGHTLY_DATE}.tar.xz"
+            
+            echo "Attempting to download ${NIGHTLY_FILE} (date: ${NIGHTLY_DATE})..."
+            if curl -fL "${NIGHTLY_BASE_URL}/${NIGHTLY_FILE}" -o "downloads/${NIGHTLY_FILE}"; then
+              echo "✓ Downloaded ${NIGHTLY_FILE} ($(du -h downloads/${NIGHTLY_FILE} | cut -f1))"
+              DOWNLOADED_NIGHTLY=true
+              break
+            else
+              echo "⚠ Nightly build not available for ${NIGHTLY_DATE}, trying previous date..."
+            fi
+          done
           
-          echo "Attempting to download ${NIGHTLY_FILE}..."
-          if curl -fL "${NIGHTLY_BASE_URL}/${NIGHTLY_FILE}" -o "downloads/${NIGHTLY_FILE}"; then
-            echo "✓ Downloaded ${NIGHTLY_FILE} ($(du -h downloads/${NIGHTLY_FILE} | cut -f1))"
+          if [ "$DOWNLOADED_NIGHTLY" = false ]; then
+            echo "⚠ Failed to download any aarch64 nightly build from the last 4 days"
+          fi
+          
+          # Download Linux aarch64 community build from tor-mullvad-aarch64 repository
+          echo ""
+          echo "Fetching Linux aarch64 community build from tor-mullvad-aarch64 repository..."
+          
+          # Fetch the latest release info from tor-mullvad-aarch64 repository
+          if AARCH64_API_RESPONSE=$(curl -fsSL "https://api.github.com/repos/ooovlad/tor-mullvad-aarch64/releases/latest" 2>/dev/null) && [ -n "$AARCH64_API_RESPONSE" ]; then
+            # Extract the tar.xz download URL and version tag
+            AARCH64_COMMUNITY_URL=$(echo "$AARCH64_API_RESPONSE" | \
+              jq -r '.assets[] | select(.name | test("tor-browser-linux-aarch64-.*\\.tar\\.xz$")) | .browser_download_url' 2>/dev/null | head -n1 || echo "")
+            AARCH64_COMMUNITY_VERSION=$(echo "$AARCH64_API_RESPONSE" | jq -r '.tag_name' 2>/dev/null || echo "")
+            
+            if [ -n "$AARCH64_COMMUNITY_URL" ] && [ "$AARCH64_COMMUNITY_URL" != "null" ] && [ -n "$AARCH64_COMMUNITY_VERSION" ]; then
+              AARCH64_COMMUNITY_FILE="tor-browser-linux-aarch64-${AARCH64_COMMUNITY_VERSION}.tar.xz"
+              echo "Found community aarch64 build: $AARCH64_COMMUNITY_URL (version: ${AARCH64_COMMUNITY_VERSION})"
+              if curl -fL "$AARCH64_COMMUNITY_URL" -o "downloads/${AARCH64_COMMUNITY_FILE}"; then
+                echo "✓ Downloaded ${AARCH64_COMMUNITY_FILE} ($(du -h downloads/${AARCH64_COMMUNITY_FILE} | cut -f1))"
+              else
+                echo "⚠ Failed to download ${AARCH64_COMMUNITY_FILE}"
+              fi
+            else
+              echo "⚠ Could not find aarch64 tar.xz in latest release"
+            fi
           else
-            echo "⚠ Failed to download ${NIGHTLY_FILE} (nightly build may not be available for today)"
+            echo "⚠ Failed to fetch tor-mullvad-aarch64 release information from GitHub API"
           fi
           
           # Download Onion Browser for iOS from its GitHub repository
@@ -185,11 +220,19 @@ jobs:
               NOTES+="- [Linux i686 (32-bit)](https://github.com/${{ github.repository }}/releases/download/latest/tor-browser-linux-i686-${VERSION}.tar.xz)
           "
             fi
-            # Check for aarch64 nightly build (dynamic filename based on date)
-            AARCH64_FILE=$(ls downloads/tor-browser-linux-aarch64-tbb-nightly.*.tar.xz 2>/dev/null | head -n1)
-            if [ -n "$AARCH64_FILE" ]; then
-              AARCH64_BASENAME=$(basename "$AARCH64_FILE")
-              NOTES+="- [Linux aarch64 (ARM64) - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${AARCH64_BASENAME})
+            # Check for aarch64 builds (nightly and community)
+            # Check for community aarch64 build first (stable release)
+            AARCH64_COMMUNITY_FILE=$(ls downloads/tor-browser-linux-aarch64-[0-9]*.tar.xz 2>/dev/null | grep -v "tbb-nightly" | head -n1)
+            if [ -n "$AARCH64_COMMUNITY_FILE" ]; then
+              AARCH64_COMMUNITY_BASENAME=$(basename "$AARCH64_COMMUNITY_FILE")
+              NOTES+="- [Linux aarch64 (ARM64) - Community Build](https://github.com/${{ github.repository }}/releases/download/latest/${AARCH64_COMMUNITY_BASENAME})
+          "
+            fi
+            # Check for nightly aarch64 build
+            AARCH64_NIGHTLY_FILE=$(ls downloads/tor-browser-linux-aarch64-tbb-nightly.*.tar.xz 2>/dev/null | head -n1)
+            if [ -n "$AARCH64_NIGHTLY_FILE" ]; then
+              AARCH64_NIGHTLY_BASENAME=$(basename "$AARCH64_NIGHTLY_FILE")
+              NOTES+="- [Linux aarch64 (ARM64) - Nightly](https://github.com/${{ github.repository }}/releases/download/latest/${AARCH64_NIGHTLY_BASENAME})
           "
             fi
           fi
@@ -268,11 +311,28 @@ jobs:
           [ -f "downloads/tor-browser-android-x86-${VERSION}.apk" ] && HAS_ANDROID_X86=true
           [ -f "downloads/OnionBrowser.ipa" ] && HAS_IOS=true
           
-          # Check for aarch64 nightly build (dynamic filename)
-          LINUX_AARCH64_FILE=$(ls downloads/tor-browser-linux-aarch64-tbb-nightly.*.tar.xz 2>/dev/null | head -n1)
-          if [ -n "$LINUX_AARCH64_FILE" ]; then
+          # Check for aarch64 builds (both community and nightly)
+          HAS_LINUX_AARCH64_COMMUNITY=false
+          HAS_LINUX_AARCH64_NIGHTLY=false
+          
+          # Check for community aarch64 build (stable release)
+          LINUX_AARCH64_COMMUNITY_FILE=$(ls downloads/tor-browser-linux-aarch64-[0-9]*.tar.xz 2>/dev/null | grep -v "tbb-nightly" | head -n1)
+          if [ -n "$LINUX_AARCH64_COMMUNITY_FILE" ]; then
+            HAS_LINUX_AARCH64_COMMUNITY=true
+            LINUX_AARCH64_COMMUNITY_BASENAME=$(basename "$LINUX_AARCH64_COMMUNITY_FILE")
+          fi
+          
+          # Check for nightly aarch64 build
+          LINUX_AARCH64_NIGHTLY_FILE=$(ls downloads/tor-browser-linux-aarch64-tbb-nightly.*.tar.xz 2>/dev/null | head -n1)
+          if [ -n "$LINUX_AARCH64_NIGHTLY_FILE" ]; then
+            HAS_LINUX_AARCH64_NIGHTLY=true
+            LINUX_AARCH64_NIGHTLY_BASENAME=$(basename "$LINUX_AARCH64_NIGHTLY_FILE")
+          fi
+          
+          # Set overall flag if any aarch64 build exists
+          HAS_LINUX_AARCH64=false
+          if [ "$HAS_LINUX_AARCH64_COMMUNITY" = true ] || [ "$HAS_LINUX_AARCH64_NIGHTLY" = true ]; then
             HAS_LINUX_AARCH64=true
-            LINUX_AARCH64_BASENAME=$(basename "$LINUX_AARCH64_FILE")
           fi
           
           # Build index.html dynamically
@@ -369,9 +429,16 @@ jobs:
                       </a>
           EOF
             fi
-            if [ "$HAS_LINUX_AARCH64" = true ]; then
+            if [ "$HAS_LINUX_AARCH64_COMMUNITY" = true ]; then
               cat >> index.html << EOF
-                      <a href="https://github.com/${REPO}/releases/download/latest/${LINUX_AARCH64_BASENAME}" class="download-link">
+                      <a href="https://github.com/${REPO}/releases/download/latest/${LINUX_AARCH64_COMMUNITY_BASENAME}" class="download-link">
+                          <span class="platform-icon">🐧</span> Linux aarch64 (ARM64) - Community Build
+                      </a>
+          EOF
+            fi
+            if [ "$HAS_LINUX_AARCH64_NIGHTLY" = true ]; then
+              cat >> index.html << EOF
+                      <a href="https://github.com/${REPO}/releases/download/latest/${LINUX_AARCH64_NIGHTLY_BASENAME}" class="download-link">
                           <span class="platform-icon">🐧</span> Linux aarch64 (ARM64) - Nightly
                       </a>
           EOF
