@@ -22,7 +22,7 @@ jobs:
           echo "Fetching latest Tor Browser version..."
           
           # Get the latest stable version from the distribution server
-          # Parse the directory listing for stable versions (exclude alpha/beta versions)
+          # Parse the directory listing for stable versions
           VERSION=$(curl -sL https://dist.torproject.org/torbrowser/ | \
             grep -oP 'href="[0-9]+\.[0-9]+(\.[0-9]+)+/"' | \
             grep -oP '[0-9]+\.[0-9]+(\.[0-9]+)+' | \
@@ -34,7 +34,6 @@ jobs:
           
           if [ -z "$VERSION" ]; then
             echo "Warning: Could not determine latest Tor Browser version"
-            echo "Will skip stable releases but continue with nightly and community builds"
           else
             echo "Latest stable version: $VERSION"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -162,7 +161,7 @@ jobs:
           # Build release notes dynamically based on what files were downloaded
           NOTES="Latest Tor Browser release - Version ${VERSION}
 
-          This release is automatically updated daily at midnight UTC.
+          This release is automatically updated monthly.
 
           ## Downloads
           "
@@ -356,14 +355,14 @@ jobs:
             if [ "$HAS_WIN_X64" = true ]; then
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-windows-x86_64-portable-${VERSION}.exe" class="download-link">
-                          <span class="platform-icon">🪟</span> Windows x86_64 (64-bit)
+                          <span class="platform-icon"></span> Windows x86_64 (64-bit)
                       </a>
           EOF
             fi
             if [ "$HAS_WIN_I686" = true ]; then
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-windows-i686-portable-${VERSION}.exe" class="download-link">
-                          <span class="platform-icon">🪟</span> Windows i686 (32-bit)
+                          <span class="platform-icon"></span> Windows i686 (32-bit)
                       </a>
           EOF
             fi
@@ -378,7 +377,7 @@ jobs:
                   <h2>macOS (Universal)</h2>
                   <div class="download-section">
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-macos-${VERSION}.dmg" class="download-link">
-                          <span class="platform-icon">🍎</span> macOS (Intel & Apple Silicon)
+                          <span class="platform-icon"></span> macOS (Intel & Apple Silicon)
                       </a>
                   </div>
           EOF
@@ -393,21 +392,21 @@ jobs:
             if [ "$HAS_LINUX_X64" = true ]; then
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-linux-x86_64-${VERSION}.tar.xz" class="download-link">
-                          <span class="platform-icon">🐧</span> Linux x86_64 (64-bit)
+                          <span class="platform-icon"></span> Linux x86_64 (64-bit)
                       </a>
           EOF
             fi
             if [ "$HAS_LINUX_I686" = true ]; then
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-linux-i686-${VERSION}.tar.xz" class="download-link">
-                          <span class="platform-icon">🐧</span> Linux i686 (32-bit)
+                          <span class="platform-icon"></span> Linux i686 (32-bit)
                       </a>
           EOF
             fi
             if [ "$HAS_LINUX_AARCH64_COMMUNITY" = true ]; then
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/${LINUX_AARCH64_COMMUNITY_BASENAME}" class="download-link">
-                          <span class="platform-icon">🐧</span> Linux aarch64 (ARM64) - Community Build
+                          <span class="platform-icon"></span> Linux aarch64 (ARM64) - Community Build
                       </a>
           EOF
             fi
@@ -425,28 +424,28 @@ jobs:
             if [ "$HAS_ANDROID_AARCH64" = true ]; then
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-android-aarch64-${VERSION}.apk" class="download-link">
-                          <span class="platform-icon">🤖</span> Android ARM64 (aarch64)
+                          <span class="platform-icon"></span> Android ARM64 (aarch64)
                       </a>
           EOF
             fi
             if [ "$HAS_ANDROID_ARMV7" = true ]; then
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-android-armv7-${VERSION}.apk" class="download-link">
-                          <span class="platform-icon">🤖</span> Android ARMv7 (32-bit)
+                          <span class="platform-icon"></span> Android ARMv7 (32-bit)
                       </a>
           EOF
             fi
             if [ "$HAS_ANDROID_X86_64" = true ]; then
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-android-x86_64-${VERSION}.apk" class="download-link">
-                          <span class="platform-icon">🤖</span> Android x86_64
+                          <span class="platform-icon"></span> Android x86_64
                       </a>
           EOF
             fi
             if [ "$HAS_ANDROID_X86" = true ]; then
               cat >> index.html << EOF
                       <a href="https://github.com/${REPO}/releases/download/latest/tor-browser-android-x86-${VERSION}.apk" class="download-link">
-                          <span class="platform-icon">🤖</span> Android x86
+                          <span class="platform-icon"></span> Android x86
                       </a>
           EOF
             fi
@@ -462,7 +461,7 @@ jobs:
                   <h2>iOS</h2>
                   <div class="download-section">
                       <a href="https://github.com/${REPO}/releases/download/latest/OnionBrowser.ipa" class="download-link">
-                          <span class="platform-icon">📱</span> Onion Browser (iOS)
+                          <span class="platform-icon"></span> Onion Browser (iOS)
                       </a>
                   </div>
           EOF
